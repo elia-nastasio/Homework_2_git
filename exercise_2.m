@@ -80,13 +80,23 @@ bin_imm = imbinarize(hist_imm_2, 0.7);
 bin_imm = not(bin_imm);
 se = strel("disk",3);
 close_imm = imclose(bin_imm, se);
+close_back_imm = close_imm;
+background_region = regionprops(close_imm, 'Area', 'PixelIdxList');
+[~, idx_bckground] = max([background_region.Area]);
+biggest_region = zeros(size(close_start_imm));
+biggest_region(background_region(idx).PixelIdxList) = 1;
+biggest_region_inverse = ~biggest_region;
+close_imm(biggest_region_inverse) = 0;
 figure(3)
-subplot(2,2,1)
+subplot(1,3,1)
 imshow(bin_imm)
 title("Binary")
-subplot(2,2,2)
-imshow(close_imm)
+subplot(1,3,2)
+imshow(close_start_imm)
 title("Closed")
+subplot(1,3,3)
+imshow(close_imm)
+title("Closed with no Background")
 %
 boundaries = bwboundaries(close_imm);
 circularities = zeros(length(boundaries), 1);
@@ -115,7 +125,8 @@ figure;
 imshow(close_imm);
 hold on;
 %bounding_box_pills = zeros(200, 1);
-
+filled_pills = 0;
+empty_pills = 0;
 for i = 1:N
     % Plot the boundary of the object
     max_circularity_boundary = boundaries{max_circularity_indices(i)};
@@ -127,13 +138,49 @@ for i = 1:N
     pill_x = max_x - min_x;
     y_divisions = floor(size(close_imm, 1) / (pill_y*1.1));
     x_divisions = floor(size(close_imm, 2) / (pill_x*1.1));
+    rect_width = floor(size(close_imm, 2) / x_divisions);
+    rect_height = floor(size(close_imm, 1) / y_divisions);
+
+    for j = 1:x_divisions
+        for k = 1:y_divisions
+            % Calculate the position of the rectangle with respect to (0, 0) of the image
+            rect_x_start = (j - 1) * rect_width + 1;
+            rect_y_start = (k - 1) * rect_height + 1;
+            
+            % Ensure that the indices stay within bounds
+            rect_x_end = rect_x_start + rect_width;
+            rect_y_end = rect_y_start + rect_height;
+            
+            % Extract the sub-image within the rectangle
+            sub_image = close_imm(rect_y_start:rect_y_end, rect_x_start:rect_x_end);
+
+            % Count the number of elements in the sub-image
+            stats_3 = regionprops(sub_image, 'Area');
+
+            % Set a threshold for the number of elements
+            threshold = 3000; % Adjust this threshold as needed
+            num_elements = sum([stats_3.Area] > threshold);
+            % Color the rectangle based on the number of elements
+            if num_elements > 4
+                empty_pills = empty_pills + 1;
+                rectangle('Position', [rect_x_start, rect_y_start, rect_width, rect_height], 'EdgeColor', 'r');
+            else
+                filled_pills = filled_pills + 1;
+                rectangle('Position', [rect_x_start, rect_y_start, rect_width, rect_height], 'EdgeColor', 'g');
+            end
+            % Plot the rectangle
+            %rectangle('Position', [rect_x, rect_y, rect_width, rect_height], 'EdgeColor', 'b');
+        end
+    end
+
     plot(max_circularity_boundary(:, 2), max_circularity_boundary(:, 1), 'r', 'LineWidth', 2);
-    rectangle('Position', [min_x, min_y, max_x - min_x, max_y - min_y], 'EdgeColor', 'b');
+    %rectangle('Position', [min_x, min_y, max_x - min_x, max_y - min_y], 'EdgeColor', 'b');
 end
 
 hold off;
 title('Objects with Top 2 Circularities and Satisfying Length Threshold');
-
+disp(['Filled Pills: ' num2str(filled_pills)]);
+disp(['Empty Pills: ' num2str(empty_pills)]);
 %{
 cc = bwconncomp(thin_imm);
 stats = regionprops(cc, 'Area', 'Eccentricity', 'BoundingBox');
